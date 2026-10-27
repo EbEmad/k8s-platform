@@ -1,0 +1,19 @@
+{% if monitors %}
+<table>
+  <thead><tr><th>Service</th><th>Status</th><th>Latency</th><th>Uptime</th></tr></thead>
+  <tbody>
+  {% for m in monitors %}
+    <tr>
+      <td>{{ m.name }}<br><small class="muted">{{ m.url }}</small></td>
+      {% if m.is_up is none %}<td class="pending">pending</td>
+      {% elif m.is_up %}<td class="up">UP</td>
+      {% else %}<td class="down">DOWN</td>{% endif %}
+      <td>{{ "%.0f ms"|format(m.latency_ms) if m.latency_ms is not none else "–" }}</td>
+      <td>{{ "%.1f%%"|format(m.uptime_percent) if m.uptime_percent is not none else "–" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No monitors yet. Add one with <code>POST /api/monitors</code>.</p>
+{% endif %}

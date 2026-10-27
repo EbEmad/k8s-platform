@@ -1,35 +1,22 @@
-from datetime import UTC, datetime
+import time
+from dataclasses import dataclass
 
-from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-from uptime.db import Base
+import httpx
 
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
-class Monitor(Base):
-    __tablename__ = "monitors"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
-    url: Mapped[str] = mapped_column(String(2048))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+@dataclass
+class CheckOutcome:
+    is_up: bool
+    status_code: int | None
+    latency_ms: float | None
+    error: str | None
 
 
-class CheckResult(Base):
-    __tablename__ = "check_results"
+async def check_url(client: httpx.AsyncClient, url: str) -> CheckOutcome:
+    start = time.perf_counter()
+    try:
+        response = await client.get(url, follow_redirects=True)
+    except httpx.HTTPError as exc:
+        return CheckOutcome(False, None, None, f"{type(exc).__name__}: {exc}"[:500])
+    latency_ms=round((time.perf_counter() - start) * 1000, 1)
+    return CheckOutcome(response.status_code < 400, response.status_code, latency_ms, None)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    monitor_id: Mapped[int] = mapped_column(
-        ForeignKey("monitors.id", ondelete="CASCADE"), index=True
-    )
-
-    checked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, index=True
-    )
-
-    is_up: Mapped[bool]
-    status_code: Mapped[int | None]
-    latency_ms: Mapped[float | None]
-    error: Mapped[str | None] = mapped_column(String(500))
