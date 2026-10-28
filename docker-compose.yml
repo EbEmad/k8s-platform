@@ -1,0 +1,44 @@
+x-app: &app
+  build: .
+  image: localhost/uptime-monitor-app:latest
+  environment:
+    UPTIME_DATABASE_URL: postgresql+psycopg://uptime:uptime@db:5432/uptime
+    UPTIME_CHECK_INTERVAL_SECONDS: "15"
+
+
+services:
+  migrate:
+    <<: *app
+    command: ["python", "-m", "uptime.migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+  
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    <<: *app
+    command: ["python", "-m", "uptime.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: uptime
+      POSTGRES_PASSWORD: uptime
+      POSTGRES_DB: uptime
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uptime -d uptime"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
