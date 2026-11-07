@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+
+jobs:
+    lint-and-test:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout
+            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 
+          - name: astral-sh/setup-uv
+            uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+            with:
+              enable-cache: true
+          - name: Run Ruff check
+            run: uv run ruff check     
+          - name: Run Pytest
+            run: uv run pytest
+    
+    build-and-push:
+        runs-on: ubuntu-latest
+        permissions:
+          contents: read
+          packages: write  # Enables pushing to ghcr.io
+        needs: lint-and-test
+        steps:
+          - name: Checkout
+            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          
+          - name: Log in to GitHub Container Registry
+            uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 
+            with:
+              registry: ${{ env.REGISTRY }}
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
+          
+          - name: Extract metadata (tags/labels) for Docker
+            id: meta
+            uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+            with:
+              images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+              tags: |
+                type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+                type=sha,format=short
+
+          
+          - name: Build Image for scanning
+            uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc 
+            with:
+              context: .
+              push: false
+              tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+              labels: ${{ steps.meta.outputs.labels }}
+          
+          - name: Trivy Image Scan
+            uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 
+            with: 
+              image-ref:  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+              severity: HIGH,CRITICAL
+              ignore-unfixed: true
+              exit-code: '1'
+          
+          - name: Build and push Docker image
+            uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+            with:
+              context: .
+              push: ${{ github.event_name != 'pull_request' }}
+              tags: ${{ steps.meta.outputs.tags }}
+              labels: ${{ steps.meta.outputs.labels }}
+
+
+
+
+
+
+
+
+
+
+
